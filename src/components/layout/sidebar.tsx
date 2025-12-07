@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
-import { Home, Search, PlusSquare, Heart, User, LogOut } from "lucide-react";
+import { Home, Search, PlusSquare, Heart, User, LogOut, MessageCircle } from "lucide-react";
 import { SignOutButton, useUser } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
 
@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { icon: Search, label: "Explore", href: "/explore" },
   { icon: PlusSquare, label: "Create", href: "/create" },
   { icon: Heart, label: "Activity", href: "/activity" },
+  { icon: MessageCircle, label: "Messages", href: "/messages" },
   { icon: User, label: "Profile", href: "/profile" },
 ];
 
@@ -23,7 +24,7 @@ export function Sidebar() {
     <aside className="hidden md:flex flex-col w-64 h-screen max-h-screen sticky top-0 px-4 py-6 border-r border-border glass">
       {/* Brand */}
       <div className="mb-10 px-4">
-        <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-linear-to-r from-primary to-purple-400">
+        <h1 className="text-3xl font-bold text-white tracking-tight">
           Scap
         </h1>
       </div>

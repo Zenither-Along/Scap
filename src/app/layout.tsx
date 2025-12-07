@@ -30,11 +30,11 @@ export default function RootLayout({
       <html lang="en" suppressHydrationWarning>
         <body
           suppressHydrationWarning
-          className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
+          className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground h-[100dvh] overflow-hidden`}
         >
-          <div className="flex min-h-screen" suppressHydrationWarning>
+          <div className="flex h-full" suppressHydrationWarning>
             <Sidebar />
-            <main className="flex-1 min-h-screen w-full pb-16 md:pb-0">
+            <main className="flex-1 h-full w-full pb-16 md:pb-0 overflow-y-auto relative no-scrollbar">
               {children}
             </main>
           </div>
