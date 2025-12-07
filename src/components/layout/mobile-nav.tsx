@@ -27,6 +27,7 @@ export function MobileNav() {
           return (
             <Link key={item.href} href={item.href} className="relative py-2 px-3">
               <motion.div
+                suppressHydrationWarning
                 whileTap={{ scale: 0.9 }}
                 className={cn(
                   "flex flex-col items-center gap-1 transition-colors duration-200",
@@ -44,6 +45,7 @@ export function MobileNav() {
                   layoutId="activeTab"
                   className="absolute -bottom-2 left-1/2 w-1 h-1 rounded-full bg-primary -translate-x-1/2"
                   transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                  suppressHydrationWarning
                 />
               )}
             </Link>

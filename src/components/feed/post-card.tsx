@@ -2,13 +2,16 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Heart, MessageCircle, Share2, Bookmark, MoreHorizontal, Code, Play } from "lucide-react";
+import { Heart, MessageCircle, Share2, Bookmark, MoreHorizontal, Code, Play, Trash2, Flag, EyeOff, UserPlus, Edit, Ban } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CodeBlock } from "./code-block";
-import { SafePreview } from "./safe-preview";
+import { LivePreview } from "./live-preview";
+import { useUser } from "@clerk/nextjs";
+import { useToast } from "@/components/ui/use-toast"; // Assuming this exists, if not standard alert or remove
 
 export interface Post {
   id: string;
+  user_id: string;
   user: {
     username: string;
     full_name: string;
@@ -16,6 +19,7 @@ export interface Post {
   };
   content: string;
   code_snippet?: string;
+  compiled_code?: string;
   language?: string;
   media_urls: string[];
   media_type: "image" | "video" | "none";
@@ -27,18 +31,41 @@ export interface Post {
 
 interface PostCardProps {
   post: Post;
+  currentUserId?: string; // Made optional to match usage if needed
 }
 
 export function PostCard({ post }: PostCardProps) {
+  const { user } = useUser();
+  const isOwner = user?.id === post.user_id;
+  
+  // Default to code view if language doesn't support live preview
+  const isPreviewSupported = !['python', 'sql', 'json'].includes((post.language || '').toLowerCase());
+  const [viewMode, setViewMode] = useState<"code" | "preview">(isPreviewSupported ? "preview" : "code");
+
   const [isLiked, setIsLiked] = useState(post.is_liked);
   const [likesCount, setLikesCount] = useState(post.likes_count);
   const [isSaved, setIsSaved] = useState(false);
-  const [viewMode, setViewMode] = useState<"code" | "preview">("preview");
 
   const handleLike = () => {
     setIsLiked(!isLiked);
     setLikesCount((prev) => (isLiked ? prev - 1 : prev + 1));
   };
+
+
+  const [showMenu, setShowMenu] = useState(false);
+  const [isDeleted, setIsDeleted] = useState(false);
+
+  const handleDelete = async () => {
+     if (!confirm("Are you sure you want to delete this post?")) return;
+     try {
+       await fetch(`/api/posts?id=${post.id}`, { method: 'DELETE' });
+       setIsDeleted(true);
+     } catch (e) {
+       alert("Failed to delete");
+     }
+  };
+
+  if (isDeleted) return null;
 
   return (
     <motion.article
@@ -68,35 +95,96 @@ export function PostCard({ post }: PostCardProps) {
               </div>
            </div>
            
-           <button className="p-3 hover:bg-white/5 rounded-full transition-colors text-muted-foreground hover:text-white">
-              <MoreHorizontal />
-           </button>
+           <div className="relative">
+             <button 
+                onClick={() => setShowMenu(!showMenu)}
+                className="p-3 hover:bg-white/5 rounded-full transition-colors text-muted-foreground hover:text-white"
+             >
+                <MoreHorizontal />
+             </button>
+
+             <AnimatePresence>
+                {showMenu && (
+                    <motion.div 
+                        initial={{ opacity: 0, scale: 0.9, y: 10 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.9, y: 10 }}
+                        className="absolute right-0 top-full mt-2 w-48 bg-[#1a1a1a] border border-white/10 rounded-xl shadow-xl z-50 overflow-hidden"
+                    >
+                        {isOwner ? (
+                             <div className="flex flex-col">
+                                <button className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 flex items-center gap-2">
+                                    <Edit size={16} /> Edit Post
+                                </button>
+                                <button
+                                   onClick={handleDelete}
+                                   className="w-full text-left px-4 py-2.5 text-sm text-red-500 hover:bg-white/5 flex items-center gap-2"
+                                >
+                                   <Trash2 size={16} /> Delete Post
+                                </button>
+                             </div>
+                        ) : (
+                            <div className="flex flex-col">
+                                <button className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 flex items-center gap-2">
+                                    <Bookmark size={16} /> Save Post
+                                </button>
+                                <button className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 flex items-center gap-2">
+                                    <Share2 size={16} /> Share
+                                </button>
+                                <button className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 flex items-center gap-2">
+                                    <UserPlus size={16} /> Follow
+                                </button>
+                                <button className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 flex items-center gap-2">
+                                    <EyeOff size={16} /> Hide Post
+                                </button>
+                                <button className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 flex items-center gap-2">
+                                    <Ban size={16} /> Block User
+                                </button>
+                                <div className="h-px bg-white/10 my-1" />
+                                <button className="w-full text-left px-4 py-2.5 text-sm text-red-400 hover:bg-white/5 flex items-center gap-2">
+                                    <Flag size={16} /> Report
+                                </button>
+                            </div>
+                        )}
+                    </motion.div>
+                )}
+             </AnimatePresence>
+           </div>
         </div>
 
         {/* Content - Full Width */}
         <div className="w-full">
-           <p className="text-lg leading-relaxed text-gray-200 mb-6 font-light">
-              {post.content}
-           </p>
+            <p className="text-base leading-relaxed text-gray-200 mb-6 font-light">
+               {post.content}
+            </p>
 
            {/* Code / Interactive Area */}
            {post.code_snippet && (
               <div className="mb-6 rounded-2xl overflow-hidden border border-white/5 shadow-2xl bg-[#080808]">
-                 {/* Toggle Switcher */}
+                 {/* Toggle Switcher Header */}
                  <div className="flex items-center justify-between px-4 py-3 bg-white/5 border-b border-white/5">
                     <div className="flex bg-black/50 p-1 rounded-xl border border-white/5">
-                       <button 
-                          onClick={() => setViewMode("preview")}
-                          className={cn("px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2", viewMode === "preview" ? "bg-green-500 text-white shadow-lg" : "text-muted-foreground hover:text-white")}
-                       >
-                          <Play size={14} /> Live
-                       </button>
-                       <button 
-                          onClick={() => setViewMode("code")}
-                          className={cn("px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2", viewMode === "code" ? "bg-primary text-white shadow-lg" : "text-muted-foreground hover:text-white")}
-                       >
-                          <Code size={14} /> Code
-                       </button>
+                        {isPreviewSupported ? (
+                           <>
+                              <button 
+                                 onClick={() => setViewMode("preview")}
+                                 className={cn("px-4 py-1.5 rounded-lg text-sm font-bold transition-all flex items-center gap-2", viewMode === "preview" ? "bg-green-500 text-white shadow-lg" : "text-muted-foreground hover:text-white")}
+                              >
+                                 <Play size={14} /> Live
+                              </button>
+                              <button 
+                                 onClick={() => setViewMode("code")}
+                                 className={cn("px-4 py-1.5 rounded-lg text-sm font-bold transition-all flex items-center gap-2", viewMode === "code" ? "bg-primary text-white shadow-lg" : "text-muted-foreground hover:text-white")}
+                              >
+                                 <Code size={14} /> Code
+                              </button>
+                           </>
+                        ) : (
+                           <div className="px-4 py-1.5 rounded-lg text-sm font-bold text-muted-foreground flex items-center gap-2">
+                              {/* Show language name or generic 'Code' */}
+                              <Code size={14} /> {post.language ? post.language.toUpperCase() : 'CODE'} Snippet
+                           </div>
+                        )}
                     </div>
                  </div>
 
@@ -119,10 +207,7 @@ export function PostCard({ post }: PostCardProps) {
                              exit={{ opacity: 0 }}
                              className="p-4"
                           >
-                             <SafePreview code={post.code_snippet} language={post.language || 'text'} />
-                             <p className="text-xs text-center text-muted-foreground mt-2 flex items-center justify-center gap-2">
-                                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" /> Live Component Preview
-                             </p>
+                             <LivePreview code={post.code_snippet} language={post.language || 'tsx'} compiledCode={post.compiled_code} />
                           </motion.div>
                        )}
                     </AnimatePresence>
@@ -181,4 +266,3 @@ function ActionBtn({ icon, count, onClick, active, color }: any) {
     </button>
   );
 }
-

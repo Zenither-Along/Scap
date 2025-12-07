@@ -71,7 +71,7 @@ export default function ExplorePage() {
              <motion.div
                 layoutId={`card-${item.id}`}
                 key={item.id}
-                initial={{ opacity: 0, scale: 0.9, y: 50, rotate: Math.random() * 4 - 2 }} // Random rotation for "unregular" feel
+                initial={{ opacity: 0, scale: 0.9, y: 50, rotate: (i % 2 === 0 ? 2 : -2) }} // Deterministic rotation
                 whileInView={{ opacity: 1, scale: 1, y: 0, rotate: 0 }} // Straighten on view
                 viewport={{ once: true, margin: "-50px" }}
                 transition={{ duration: 0.8, delay: i * 0.1, type: "spring" }}

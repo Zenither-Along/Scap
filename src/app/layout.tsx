@@ -20,6 +20,8 @@ export const metadata: Metadata = {
   description: "The next generation social media",
 };
 
+import { UserSync } from "@/components/auth/user-sync";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -27,6 +29,7 @@ export default function RootLayout({
 }>) {
   return (
     <ClerkProvider>
+      <UserSync />
       <html lang="en" suppressHydrationWarning>
         <body
           suppressHydrationWarning

@@ -38,6 +38,7 @@ export function Sidebar() {
           return (
             <Link key={item.href} href={item.href} className="block group">
               <motion.div
+                suppressHydrationWarning
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 className={cn(
@@ -72,7 +73,7 @@ export function Sidebar() {
             />
             <div className="flex-1 min-w-0">
               <p className="font-medium truncate">{user.fullName}</p>
-              <p className="text-sm text-muted-foreground truncate">@{user.username}</p>
+              <p className="text-sm text-muted-foreground truncate">@{user.username || user.id.slice(0, 8)}</p>
             </div>
             <SignOutButton>
               <button className="text-muted-foreground hover:text-destructive transition-colors">

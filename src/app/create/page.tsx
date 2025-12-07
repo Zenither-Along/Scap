@@ -7,16 +7,17 @@ import { useUser } from "@clerk/nextjs";
 import { useSupabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import { CodeBlock } from "@/components/feed/code-block";
+import { LivePreview } from "@/components/feed/live-preview";
 
 const LANGUAGES = [
-  { id: "javascript", label: "JavaScript" },
-  { id: "typescript", label: "TypeScript" },
-  { id: "tsx", label: "React (TSX)" },
-  { id: "css", label: "CSS" },
-  { id: "python", label: "Python" },
-  { id: "html", label: "HTML" },
-  { id: "sql", label: "SQL" },
-  { id: "json", label: "JSON" },
+  { id: "tsx", label: "React (TSX)", icon: "R", hint: "Interactive" },
+  { id: "html", label: "HTML", icon: "H", hint: "Static" },
+  { id: "css", label: "CSS", icon: "C", hint: "Styling" },
+  { id: "javascript", label: "JavaScript", icon: "JS", hint: "Console" },
+  { id: "typescript", label: "TypeScript", icon: "TS", hint: "Typed" },
+  { id: "python", label: "Python", icon: "PY", hint: "Code only" },
+  { id: "sql", label: "SQL", icon: "DB", hint: "Code only" },
+  { id: "json", label: "JSON", icon: "{}", hint: "Code only" },
 ];
 
 export default function CreatePost() {
@@ -77,9 +78,9 @@ export default function CreatePost() {
         const fileExt = mediaFile.name.split(".").pop();
         const fileName = `${Math.random()}.${fileExt}`;
         const filePath = `${user?.id}/${fileName}`;
-        const { error: uploadError } = await supabase.storage.from("posts").upload(filePath, mediaFile);
+        const { error: uploadError } = await supabase.storage.from("post_images").upload(filePath, mediaFile);
         if (uploadError) throw uploadError;
-        const { data } = supabase.storage.from("posts").getPublicUrl(filePath);
+        const { data } = supabase.storage.from("post_images").getPublicUrl(filePath);
         mediaUrl = data.publicUrl;
         mediaType = mediaFile.type.startsWith("image/") ? "image" : "video";
       }
@@ -150,44 +151,44 @@ export default function CreatePost() {
       <div className="flex-1 space-y-6">
         <div className="glass p-1.5 rounded-2xl border border-white/10 flex items-center justify-between px-2 bg-black/20">
             <div className="flex gap-2 relative">
-               {/* Animated Background Pill */}
-               <motion.div 
-                 layoutId="activeTabPill"
-                 className="absolute inset-0 bg-primary/20 rounded-xl"
-                 initial={false}
-                 transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-                 style={{ 
-                   width: activeTab === 'text' ? '128px' : '138px', // approx widths
-                   left: activeTab === 'text' ? '0' : '136px'
-                 }}
-               />
-               
                <button 
                   onClick={() => setActiveTab("text")}
-                  className={cn("relative z-10 px-4 py-2 rounded-xl text-sm font-medium transition-colors flex items-center gap-2", activeTab === "text" ? "text-primary shadow-sm" : "text-muted-foreground hover:text-white")}
+                  className={cn("relative px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2", activeTab === "text" ? "text-white" : "text-muted-foreground hover:text-white")}
                >
-                 <FileText size={16} /> Review / Text
+                 {activeTab === "text" && (
+                    <motion.div 
+                      layoutId="activeTabPill"
+                      className="absolute inset-0 bg-[#6E6E6E] rounded-xl shadow-lg shadow-white/5 -z-10"
+                      transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                    />
+                 )}
+                 <FileText size={16} className={cn(activeTab === "text" && "fill-white/10")} /> Review / Text
                </button>
                <button 
                   onClick={() => setActiveTab("code")}
-                  className={cn("relative z-10 px-4 py-2 rounded-xl text-sm font-medium transition-colors flex items-center gap-2", activeTab === "code" ? "text-primary shadow-sm" : "text-muted-foreground hover:text-white")}
+                  className={cn("relative px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2", activeTab === "code" ? "text-white" : "text-muted-foreground hover:text-white")}
                >
-                 <Code size={16} /> Code Editor
+                 {activeTab === "code" && (
+                    <motion.div 
+                      layoutId="activeTabPill"
+                      className="absolute inset-0 bg-[#6E6E6E] rounded-xl shadow-lg shadow-white/5 -z-10"
+                      transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                    />
+                 )}
+                 <Code size={16} className={cn(activeTab === "code" && "fill-white/10")} /> Code
                </button>
             </div>
             
             <button 
               onClick={() => setShowPreview(true)} 
               className="md:hidden text-primary p-2 hover:bg-white/5 rounded-full transition-colors"
+              title="Preview Post"
             >
-                <div className="flex items-center gap-2">
-                   <span className="text-xs font-bold uppercase tracking-wider">Preview</span>
-                   <Eye size={20} />
-                </div>
+                <Eye size={24} />
             </button>
         </div>
 
-        <div className="glass rounded-3xl border border-white/10 p-6 space-y-6 min-h-[500px] flex flex-col shadow-2xl bg-gradient-to-b from-white/5 to-transparent">
+        <div className="glass rounded-3xl border border-white/10 p-6 space-y-6 min-h-[500px] flex flex-col shadow-2xl bg-linear-to-b from-white/5 to-transparent">
             {/* Top Bar for Code: Custom Dropdown */}
             <AnimatePresence mode="popLayout">
             {activeTab === "code" && (
@@ -212,16 +213,22 @@ export default function CreatePost() {
                               initial={{ opacity: 0, y: 5 }}
                               animate={{ opacity: 1, y: 0 }}
                               exit={{ opacity: 0, y: 5 }}
-                              className="absolute right-0 top-full mt-2 w-48 bg-[#1e1e1e] border border-white/10 rounded-xl shadow-xl overflow-hidden py-1 max-h-60 overflow-y-auto custom-scrollbar"
+                              className="absolute right-0 top-full mt-2 w-64 bg-[#1e1e1e] border border-white/10 rounded-xl shadow-xl overflow-hidden py-1 max-h-60 overflow-y-auto"
                             >
                                 {LANGUAGES.map((lang) => (
                                   <button
                                     key={lang.id}
                                     onClick={() => { setLanguage(lang.id); setIsLangOpen(false); }}
-                                    className="w-full text-left px-4 py-2 text-xs hover:bg-primary/20 hover:text-primary transition-colors flex items-center justify-between"
+                                    className="w-full text-left px-4 py-2.5 text-xs hover:bg-primary/20 hover:text-primary transition-colors flex items-center justify-between gap-3"
                                   >
-                                    {lang.label}
-                                    {language === lang.id && <Check size={12} />}
+                                    <div className="flex items-center gap-2">
+                                      <span>{lang.icon}</span>
+                                      <span>{lang.label}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-[10px] text-muted-foreground">{lang.hint}</span>
+                                      {language === lang.id && <Check size={12} />}
+                                    </div>
                                   </button>
                                 ))}
                             </motion.div>
@@ -239,7 +246,7 @@ export default function CreatePost() {
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
                   placeholder="Describe your code or thoughts here..."
-                  className="w-full bg-transparent border-none focus:ring-0 resize-none text-lg px-0 placeholder:text-muted-foreground/50 min-h-[80px]"
+                  className="w-full bg-transparent border-none focus:ring-0 resize-none text-lg px-0 placeholder:text-muted-foreground/50 min-h-[80px] focus:outline-none"
                 />
                 
                 {activeTab === "code" && (
@@ -250,7 +257,7 @@ export default function CreatePost() {
                             value={codeSnippet}
                             onChange={(e) => setCodeSnippet(e.target.value)}
                             placeholder="// Start typing your code..."
-                            className="w-full h-full bg-[#0d0d0d] p-6 rounded-2xl font-mono text-sm text-gray-300 resize-none border border-white/10 focus:border-primary/50 focus:ring-1 focus:ring-primary outline-none leading-relaxed custom-scrollbar overflow-hidden"
+                            className="w-full h-full bg-[#0d0d0d] p-6 rounded-2xl font-mono text-sm text-gray-300 resize-none border border-white/10 focus:border-white/20 focus:ring-0 outline-none leading-relaxed custom-scrollbar overflow-hidden transition-colors"
                             spellCheck={false}
                         />
                      </div>
@@ -324,6 +331,14 @@ export default function CreatePost() {
 
 // Subcomponent for Preview to reuse in Mobile/Desktop
 function PreviewCard({ content, codeSnippet, language, mediaPreview }: any) {
+  const [previewMode, setPreviewMode] = useState<"live" | "code">("live");
+  
+  // Check if language supports live preview
+  const isPreviewSupported = !["python", "sql", "json"].includes(language);
+  
+  // Force code mode if preview is not supported
+  const currentMode = isPreviewSupported ? previewMode : "code";
+
   return (
     <div className="glass border border-white/10 rounded-2xl overflow-hidden opacity-90 hover:opacity-100 transition-opacity">
       <div className="p-4 flex gap-3">
@@ -337,8 +352,30 @@ function PreviewCard({ content, codeSnippet, language, mediaPreview }: any) {
             <p className="text-sm text-gray-300 whitespace-pre-wrap leading-relaxed">{content || "Your post content will appear here..."}</p>
             
             {codeSnippet && (
-              <div className="mt-4 transform scale-100 origin-top-left">
+              <div className="mt-4">
+                {/* Toggle - Only show if preview is supported */}
+                {isPreviewSupported && (
+                  <div className="flex gap-2 mb-3">
+                    <button 
+                      onClick={() => setPreviewMode("live")}
+                      className={cn("px-3 py-1 rounded-lg text-xs font-bold transition-all", currentMode === "live" ? "bg-green-500 text-white shadow-lg shadow-green-500/20" : "bg-white/5 text-muted-foreground hover:bg-white/10")}
+                    >
+                      Live
+                    </button>
+                    <button 
+                      onClick={() => setPreviewMode("code")}
+                      className={cn("px-3 py-1 rounded-lg text-xs font-bold transition-all", currentMode === "code" ? "bg-primary text-white shadow-lg shadow-primary/20" : "bg-white/5 text-muted-foreground hover:bg-white/10")}
+                    >
+                      Code
+                    </button>
+                  </div>
+                )}
+                
+                {currentMode === "live" ? (
+                  <LivePreview code={codeSnippet} language={language} />
+                ) : (
                   <CodeBlock code={codeSnippet} language={language} />
+                )}
               </div>
             )}
 
