@@ -1,163 +1,455 @@
 "use client";
 
-import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Search, Send, Phone, Video, MoreVertical, Image as ImageIcon, Mic, MessageCircle } from "lucide-react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { motion } from "framer-motion";
+import { Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-// Mock Conversations
-const CONVERSATIONS = [
-  { id: 1, user: "ui_wizard", avatar: "https://i.pravatar.cc/150?u=1", lastMsg: "Did you check the new framer update?", time: "10:30 AM", unread: 2 },
-  { id: 2, user: "sarah_tech", avatar: "https://i.pravatar.cc/150?u=2", lastMsg: "Code review done! ✅", time: "Yesterday", unread: 0 },
-  { id: 3, user: "jordan_walke", avatar: "https://i.pravatar.cc/150?u=3", lastMsg: "Let's collaborate on that hook.", time: "Monday", unread: 0 },
-  { id: 4, user: "design_system", avatar: "https://i.pravatar.cc/150?u=4", lastMsg: "Tokens updated.", time: "Sunday", unread: 5 },
-];
-
-const MESSAGES = [
-  { id: 1, sender: "them", text: "Hey! Saw your recent post about Glassmorphism. Looks sick! 🔥" },
-  { id: 2, sender: "me", text: "Thanks! Took me a while to get the blur just right on mobile." },
-  { id: 3, sender: "them", text: "Did you use backdrop-filter or a blurred image overlay?" },
-  { id: 4, sender: "me", text: "Backdrop-filter with a fallback for older browsers. Also tweaked the saturation." },
-  { id: 5, sender: "them", text: "Smart. By the way, are you free for a quick call later?" },
-];
+import { useUser } from "@clerk/nextjs";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Message, Conversation, SearchUser } from "./types";
+import { Sidebar } from "./Sidebar";
+import { ChatWindow } from "./ChatWindow";
 
 export default function MessagesPage() {
-  const [activeChat, setActiveChat] = useState<number | null>(null);
+  const { user } = useUser();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [activeChat, setActiveChat] = useState<string | null>(null);
+  
+  // Sync URL with activeChat
+  useEffect(() => {
+    const conversationId = searchParams.get('c');
+    setActiveChat(conversationId);
+  }, [searchParams]);
+
+  // Helper to change chat
+  const openChat = (id: string | null) => {
+    if (id) {
+      router.push(`/messages?c=${id}`);
+    } else {
+      router.push('/messages');
+    }
+  };
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [newMessage, setNewMessage] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  // Message interactions
+  const [messageReactions, setMessageReactions] = useState<Record<string, {reaction: string, user_id: string}[]>>({});
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editContent, setEditContent] = useState("");
+  const [showReactionPicker, setShowReactionPicker] = useState<string | null>(null);
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [hiddenMessages, setHiddenMessages] = useState<Set<string>>(new Set());
+  
+  // Forward modal
+  const [showForwardModal, setShowForwardModal] = useState(false);
+  const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
+  const [forwardSearch, setForwardSearch] = useState("");
+  const [selectedForwardChats, setSelectedForwardChats] = useState<string[]>([]);
+
+  // Load hidden messages from localStorage
+  useEffect(() => {
+    const stored = localStorage.getItem('hiddenMessages');
+    if (stored) {
+      setHiddenMessages(new Set(JSON.parse(stored)));
+    }
+  }, []);
+
+  // Start conversation with user
+  const startConversation = async (userId: string) => {
+    try {
+      const res = await fetch('/api/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        openChat(data.conversation_id);
+                      openChat(data.conversation_id);
+      fetchConversations(); // Refresh list
+    }
+  } catch (error) {
+    console.error(error);
+  }
+};
+
+// Delete conversation
+const handleDeleteConversation = async (conversationId: string) => {
+  if (!confirm("Delete this conversation? It will be removed from your list (one-sided).")) return;
+
+  try {
+    const res = await fetch(`/api/conversations?id=${conversationId}`, {
+      method: 'DELETE'
+    });
+
+    if (res.ok) {
+      // Remove from list
+      setConversations(prev => prev.filter(c => c.id !== conversationId));
+      // If active, deselect
+      if (activeChat === conversationId) {
+        openChat(null);
+      }
+    } else {
+      alert("Failed to delete conversation");
+    }
+  } catch (error) {
+    console.error(error);
+    alert("Error deleting conversation");
+  }
+};
+
+// Fetch conversations
+  const fetchConversations = useCallback(async () => {
+    try {
+      const res = await fetch('/api/conversations');
+      if (!res.ok) throw new Error('Failed to fetch');
+      const data = await res.json();
+      setConversations(data.conversations || []);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Fetch messages for active chat
+  const fetchMessages = useCallback(async (conversationId: string) => {
+    try {
+      const res = await fetch(`/api/messages?conversation_id=${conversationId}`);
+      if (!res.ok) throw new Error('Failed to fetch');
+      const data = await res.json();
+      setMessages(data.messages || []);
+      
+      // Fetch reactions for these messages
+      if (data.messages && data.messages.length > 0) {
+        const messageIds = data.messages.map((m: Message) => m.id).join(',');
+        const reactionsRes = await fetch(`/api/messages/reactions?message_ids=${messageIds}`);
+        if (reactionsRes.ok) {
+          const reactionsData = await reactionsRes.json();
+          // Only set reactions that actually exist (not empty arrays)
+          const filteredReactions: Record<string, {reaction: string, user_id: string}[]> = {};
+          Object.entries(reactionsData.reactions || {}).forEach(([msgId, reactions]) => {
+            if (Array.isArray(reactions) && reactions.length > 0) {
+              filteredReactions[msgId] = reactions as {reaction: string, user_id: string}[];
+            }
+          });
+          setMessageReactions(filteredReactions);
+        }
+      } else {
+        setMessageReactions({});
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchConversations();
+  }, [fetchConversations]);
+
+  useEffect(() => {
+    if (activeChat) {
+      fetchMessages(activeChat);
+      // Poll for new messages every 3 seconds
+      const interval = setInterval(() => fetchMessages(activeChat), 3000);
+      return () => clearInterval(interval);
+    }
+  }, [activeChat, fetchMessages]);
+
+  // Scroll to bottom when messages change
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (showReactionPicker) {
+        setShowReactionPicker(null);
+      }
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [showReactionPicker]);
+
+  const handleSendMessage = async () => {
+    if (!newMessage.trim() || !activeChat || sending) return;
+    
+    setSending(true);
+    const messageContent = newMessage;
+    const replyToId = replyingTo?.id || null;
+    setNewMessage("");
+    setReplyingTo(null); // Clear reply state
+
+    // Optimistic update
+    const tempMessage: Message = {
+      id: `temp-${Date.now()}`,
+      content: messageContent,
+      sender_id: user?.id || '',
+      is_read: false,
+      is_deleted: false,
+      edited_at: null,
+      created_at: new Date().toISOString(),
+      ...(replyingTo && {
+        replied_to: {
+          id: replyingTo.id,
+          content: replyingTo.content,
+          sender_id: replyingTo.sender_id
+        }
+      })
+    };
+    setMessages(prev => [...prev, tempMessage]);
+
+    try {
+      const res = await fetch('/api/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          conversation_id: activeChat, 
+          content: messageContent,
+          replied_to_message_id: replyToId
+        })
+      });
+
+      if (!res.ok) {
+        // Remove optimistic message on error
+        setMessages(prev => prev.filter(m => m.id !== tempMessage.id));
+        throw new Error('Failed to send');
+      }
+
+      // Refresh messages to get real message
+      fetchMessages(activeChat);
+    } catch (error) {
+      console.error(error);
+      setNewMessage(messageContent); // Restore message on error
+    } finally {
+      setSending(false);
+    }
+  };
+
+  // Toggle reaction on a message
+  const handleReaction = async (messageId: string, reaction: string, e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+    }
+    try {
+      const res = await fetch('/api/messages/reactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message_id: messageId, reaction })
+      });
+
+      if (res.ok) {
+        // Refresh messages to get updated reactions
+        if (activeChat) fetchMessages(activeChat);
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  // Edit message
+  const handleEditMessage = async (messageId: string) => {
+    if (!editContent.trim()) return;
+
+    try {
+      const res = await fetch('/api/messages', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message_id: messageId, content: editContent })
+      });
+
+      if (res.ok) {
+        setEditingMessageId(null);
+        setEditContent("");
+        if (activeChat) fetchMessages(activeChat);
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  // Delete message
+  const handleDeleteMessage = async (messageId: string) => {
+    if (!confirm("Delete this message?")) return;
+
+    try {
+      const res = await fetch(`/api/messages?id=${messageId}`, {
+        method: 'DELETE'
+      });
+
+      if (res.ok) {
+        // Remove from UI
+        setMessages(prev => prev.filter(m => m.id !== messageId));
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const activeConversation = conversations.find(c => c.id === activeChat);
 
   return (
-    <div className="h-[calc(100vh-64px)] md:h-screen flex overflow-hidden">
+    <div className="fixed inset-0 z-40 md:static md:h-[calc(100vh-64px)] flex overflow-hidden bg-background">
       
-      {/* Sidebar List */}
-      <div className={cn(
-        "w-full md:w-80 border-r border-white/5 bg-black/20 flex flex-col transition-all duration-300",
-        activeChat !== null ? "hidden md:flex" : "flex"
-      )}>
-         <div className="p-6">
-            <h1 className="text-2xl font-bold mb-6">Messages</h1>
-            <div className="relative">
-                <Search size={16} className="absolute left-3 top-3 text-muted-foreground" />
-                <input 
-                  type="text" 
-                  placeholder="Search chats..." 
-                  className="w-full bg-white/5 border border-white/5 rounded-xl py-2.5 pl-10 text-sm focus:outline-none focus:bg-white/10 transition-colors"
-                />
+      <Sidebar 
+          conversations={conversations}
+          activeChat={activeChat}
+          onSelectChat={openChat}
+          onStartChat={startConversation}
+          loading={loading}
+          activeConversation={activeConversation}
+      />
+
+      <ChatWindow 
+          activeChat={activeChat}
+          activeConversation={activeConversation}
+          messages={messages}
+          user={user}
+          loading={loading}
+          onBack={() => openChat(null)}
+          onDeleteConversation={handleDeleteConversation}
+          // Props for interactions
+          showReactionPicker={showReactionPicker}
+          setShowReactionPicker={setShowReactionPicker}
+          messageReactions={messageReactions}
+          handleReaction={handleReaction}
+          handleDeleteMessage={handleDeleteMessage}
+          replyingTo={replyingTo}
+          setReplyingTo={setReplyingTo}
+          setForwardingMessage={setForwardingMessage}
+          setShowForwardModal={setShowForwardModal}
+          editingMessageId={editingMessageId}
+          setEditingMessageId={setEditingMessageId}
+          editContent={editContent}
+          setEditContent={setEditContent}
+          handleEditMessage={handleEditMessage}
+          hiddenMessages={hiddenMessages}
+          setHiddenMessages={setHiddenMessages}
+          // Input
+          newMessage={newMessage}
+          setNewMessage={setNewMessage}
+          handleSendMessage={handleSendMessage}
+          sending={sending}
+          messagesEndRef={messagesEndRef}
+      />
+
+      {/* Forward Modal */}
+      {showForwardModal && forwardingMessage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setShowForwardModal(false)}>
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-[#1f2937] rounded-2xl w-full max-w-md mx-4 max-h-[80vh] overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="p-4 border-b border-white/10 flex items-center justify-between">
+              <h3 className="text-lg font-bold">Forward Message</h3>
+              <button onClick={() => setShowForwardModal(false)} className="p-2 hover:bg-white/10 rounded-lg">
+                <X size={20} />
+              </button>
             </div>
-         </div>
 
-         <div className="flex-1 overflow-y-auto px-2 space-y-1">
-             {CONVERSATIONS.map((chat) => (
-                <button
-                   key={chat.id}
-                   onClick={() => setActiveChat(chat.id)}
-                   className={cn(
-                      "w-full p-3 rounded-xl flex items-center gap-3 transition-colors hover:bg-white/5 text-left group",
-                      activeChat === chat.id && "bg-primary/10"
-                   )}
-                >
-                    <div className="relative">
-                        <img src={chat.avatar} className="w-12 h-12 rounded-full object-cover" />
-                        {chat.unread > 0 && <span className="absolute -top-1 -right-1 w-5 h-5 bg-primary text-black text-[10px] font-bold flex items-center justify-center rounded-full border border-black">{chat.unread}</span>}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                        <div className="flex justify-between items-center mb-0.5">
-                            <span className="font-bold text-sm text-gray-200">{chat.user}</span>
-                            <span className="text-[10px] text-muted-foreground">{chat.time}</span>
-                        </div>
-                        <p className={cn("text-xs truncate", chat.unread > 0 ? "text-white font-medium" : "text-muted-foreground")}>{chat.lastMsg}</p>
-                    </div>
-                </button>
-             ))}
-         </div>
-      </div>
-
-      {/* Chat Window */}
-      <div className={cn(
-         "flex-1 flex-col bg-linear-to-br from-black/40 to-black/60 relative",
-         activeChat === null ? "hidden md:flex items-center justify-center" : "flex"
-      )}>
-          {activeChat === null ? (
-              <div className="text-center p-8 text-muted-foreground">
-                  <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
-                      <MessageCircle size={32} />
-                  </div>
-                  <p>Select a conversation to start chatting</p>
+            {/* Search */}
+            <div className="p-4 border-b border-white/10">
+              <div className="relative">
+                <Search size={16} className="absolute left-3 top-3 text-muted-foreground" />
+                <input
+                  type="text"
+                  value={forwardSearch}
+                  onChange={(e) => setForwardSearch(e.target.value)}
+                  placeholder="Search conversations..."
+                  className="w-full bg-white/5 border border-white/10 rounded-lg py-2 pl-10 pr-4 text-sm focus:outline-none focus:bg-white/10"
+                />
               </div>
-          ) : (
-              <>
-                {/* Chat Header */}
-                <div className="p-4 border-b border-white/5 flex items-center justify-between bg-black/40">
-                    <div className="flex items-center gap-3">
-                        <button onClick={() => setActiveChat(null)} className="md:hidden p-2 -ml-2 text-muted-foreground hover:text-white">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-                        </button>
-                        <img src={CONVERSATIONS.find(c => c.id === activeChat)?.avatar} className="w-10 h-10 rounded-full" />
-                        <div>
-                             <h3 className="font-bold text-sm">{CONVERSATIONS.find(c => c.id === activeChat)?.user}</h3>
-                             <div className="flex items-center gap-1.5">
-                                 <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-                                 <span className="text-[10px] text-muted-foreground">Online</span>
-                             </div>
-                        </div>
-                    </div>
-                    <div className="flex gap-1">
-                        <IconButton icon={Phone} />
-                        <IconButton icon={Video} />
-                        <IconButton icon={MoreVertical} />
-                    </div>
-                </div>
+            </div>
 
-                {/* Messages Area */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                     {MESSAGES.map((msg) => (
-                        <motion.div 
-                           initial={{ opacity: 0, y: 10 }}
-                           animate={{ opacity: 1, y: 0 }}
-                           key={msg.id}
-                           className={cn(
-                               "max-w-[80%] p-4 rounded-2xl text-sm leading-relaxed relative",
-                               msg.sender === "me" 
-                                 ? "ml-auto bg-primary text-primary-foreground rounded-tr-sm" 
-                                 : "bg-white/10 backdrop-blur-md rounded-tl-sm text-gray-200"
-                           )}
-                        >
-                            {msg.text}
-                        </motion.div>
-                     ))}
-                </div>
-
-                {/* Input Area */}
-                <div className="p-4 bg-black/40 border-t border-white/5">
-                    <div className="flex gap-2">
-                        <button className="p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors text-muted-foreground hover:text-white">
-                             <ImageIcon size={20} />
-                        </button>
-                        <div className="flex-1 relative">
-                             <input 
-                               type="text" 
-                               placeholder="Type a message..." 
-                               className="w-full h-full bg-white/5 rounded-xl px-4 py-3 focus:outline-none focus:bg-white/10 transition-colors"
-                             />
-                             <button className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-muted-foreground hover:text-white">
-                                 <Mic size={18} />
-                             </button>
-                        </div>
-                        <button className="p-3 rounded-xl bg-primary text-primary-foreground hover:opacity-90 transition-opacity">
-                             <Send size={20} />
-                        </button>
+            {/* Conversation List */}
+            <div className="flex-1 overflow-y-auto p-2">
+              {conversations
+                .filter(c => 
+                  c.user.full_name.toLowerCase().includes(forwardSearch.toLowerCase()) ||
+                  c.user.username.toLowerCase().includes(forwardSearch.toLowerCase())
+                )
+                .map((conv) => (
+                  <button
+                    key={conv.id}
+                    onClick={() => {
+                      if (selectedForwardChats.includes(conv.id)) {
+                        setSelectedForwardChats(prev => prev.filter(id => id !== conv.id));
+                      } else {
+                        setSelectedForwardChats(prev => [...prev, conv.id]);
+                      }
+                    }}
+                    className={cn(
+                      "w-full p-3 rounded-xl flex items-center gap-3 transition-colors text-left",
+                      selectedForwardChats.includes(conv.id) ? "bg-primary/20" : "hover:bg-white/5"
+                    )}
+                  >
+                    <div className={cn(
+                      "w-5 h-5 rounded border-2 flex items-center justify-center shrink-0",
+                      selectedForwardChats.includes(conv.id) ? "bg-primary border-primary" : "border-white/30"
+                    )}>
+                      {selectedForwardChats.includes(conv.id) && <span className="text-white text-xs">✓</span>}
                     </div>
-                </div>
-              </>
-          )}
-      </div>
+                    <img 
+                      src={conv.user.avatar_url || '/default-avatar.png'} 
+                      className="w-10 h-10 rounded-full" 
+                      alt="" 
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-sm truncate">{conv.user.full_name}</div>
+                      <div className="text-xs text-muted-foreground truncate">@{conv.user.username}</div>
+                    </div>
+                  </button>
+                ))}
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-white/10">
+              <button
+                onClick={async () => {
+                  if (!forwardingMessage || selectedForwardChats.length === 0) return;
+                  
+                  try {
+                    // Send message to each selected conversation
+                    for (const conversationId of selectedForwardChats) {
+                      await fetch('/api/messages', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                          conversation_id: conversationId, 
+                          content: forwardingMessage.content 
+                        })
+                      });
+                    }
+                    
+                    setShowForwardModal(false);
+                    setSelectedForwardChats([]);
+                    setForwardingMessage(null);
+                    alert(`Forwarded to ${selectedForwardChats.length} chat(s)`);
+                  } catch (error) {
+                    console.error(error);
+                  }
+                }}
+                disabled={selectedForwardChats.length === 0}
+                className="w-full py-3 bg-primary text-white rounded-xl font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Forward to {selectedForwardChats.length} chat{selectedForwardChats.length !== 1 ? 's' : ''}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
 
     </div>
   );
-}
-
-function IconButton({ icon: Icon }: any) {
-    return (
-        <button className="p-2.5 rounded-lg text-muted-foreground hover:bg-white/10 hover:text-white transition-colors">
-            <Icon size={18} />
-        </button>
-    )
 }

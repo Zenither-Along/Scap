@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Heart, MessageCircle, Share2, Bookmark, MoreHorizontal, Code, Play, Trash2, Flag, EyeOff, UserPlus, Edit, Ban } from "lucide-react";
+import { Heart, MessageCircle, Share2, Bookmark, MoreHorizontal, Code, Play, Trash2, Flag, EyeOff, UserPlus, UserMinus, Edit, Ban } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CodeBlock } from "./code-block";
 import { LivePreview } from "./live-preview";
 import { useUser } from "@clerk/nextjs";
-import { useToast } from "@/components/ui/use-toast"; // Assuming this exists, if not standard alert or remove
 
 export interface Post {
   id: string;
@@ -26,16 +27,19 @@ export interface Post {
   likes_count: number;
   comments_count: number;
   is_liked: boolean;
+  is_saved?: boolean;
   created_at: string;
 }
 
 interface PostCardProps {
   post: Post;
-  currentUserId?: string; // Made optional to match usage if needed
+  currentUserId?: string;
+  onHide?: (postId: string) => void;
 }
 
-export function PostCard({ post }: PostCardProps) {
+export function PostCard({ post, onHide }: PostCardProps) {
   const { user } = useUser();
+  const pathname = usePathname();
   const isOwner = user?.id === post.user_id;
   
   // Default to code view if language doesn't support live preview
@@ -44,64 +48,246 @@ export function PostCard({ post }: PostCardProps) {
 
   const [isLiked, setIsLiked] = useState(post.is_liked);
   const [likesCount, setLikesCount] = useState(post.likes_count);
-  const [isSaved, setIsSaved] = useState(false);
+  const [isSaved, setIsSaved] = useState(post.is_saved || false);
+  const [showMenu, setShowMenu] = useState(false);
+  const [isFollowing, setIsFollowing] = useState(false); // We'd ideally fetch this or pass it in
+  const [hasCheckedFollow, setHasCheckedFollow] = useState(false);
+  const [isDeleted, setIsDeleted] = useState(false);
+  const [isHidden, setIsHidden] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleLike = () => {
+  const handleLike = async () => {
+    // Optimistic update
     setIsLiked(!isLiked);
     setLikesCount((prev) => (isLiked ? prev - 1 : prev + 1));
+    
+    try {
+      const res = await fetch('/api/posts/like', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ post_id: post.id })
+      });
+      
+      if (!res.ok) {
+        // Revert on error
+        setIsLiked(isLiked);
+        setLikesCount((prev) => (isLiked ? prev + 1 : prev - 1));
+      }
+    } catch {
+      // Revert on error
+      setIsLiked(isLiked);
+      setLikesCount((prev) => (isLiked ? prev + 1 : prev - 1));
+    }
   };
 
-
-  const [showMenu, setShowMenu] = useState(false);
-  const [isDeleted, setIsDeleted] = useState(false);
+  const handleSave = async () => {
+    setIsSaved(!isSaved);
+    
+    try {
+      const res = await fetch('/api/posts/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ post_id: post.id })
+      });
+      
+      if (!res.ok) setIsSaved(isSaved);
+    } catch {
+      setIsSaved(isSaved);
+    }
+  };
 
   const handleDelete = async () => {
-     if (!confirm("Are you sure you want to delete this post?")) return;
-     try {
-       await fetch(`/api/posts?id=${post.id}`, { method: 'DELETE' });
-       setIsDeleted(true);
-     } catch (e) {
-       alert("Failed to delete");
-     }
+    if (!confirm("Are you sure you want to delete this post?")) return;
+    setIsLoading(true);
+    
+    try {
+      const res = await fetch(`/api/posts?id=${post.id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setIsDeleted(true);
+      } else {
+        alert("Failed to delete post");
+      }
+    } catch {
+      alert("Failed to delete post");
+    } finally {
+      setIsLoading(false);
+      setShowMenu(false);
+    }
   };
 
-  if (isDeleted) return null;
+  const handleHide = async () => {
+    try {
+      const res = await fetch('/api/posts/hide', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ post_id: post.id })
+      });
+      
+      if (res.ok) {
+        setIsHidden(true);
+        onHide?.(post.id);
+      }
+    } catch {
+      alert("Failed to hide post");
+    } finally {
+      setShowMenu(false);
+    }
+  };
+
+  const checkFollowStatus = async () => {
+      if (hasCheckedFollow || isOwner) return;
+      try {
+           // We check if "I" follow "them". The API route for 'follows' list is expensive for just check.
+           // However, let's use the 'follows' check from profile route logic which passed `is_following`.
+           // Since we don't have it on `post`, we might leave it as optimistic "Follow" -> "Following" 
+           // BUT the user asked for "properly let the follow option work like when already following it will be unfollow".
+           // This implies we need to know. 
+           // For now, let's just assume "Follow" until clicked, OR assume the backend toggle tells us the new state.
+           // Wait, the backend route returns `{ following: boolean }`.
+           // So we can just use that to update state after click.
+           // But initial state? If we don't know, maybe text "Follow/Unfollow"?
+           // Better: Add a quick check.
+           // Actually, `checkFollowStatus` is too heavy to run on every post mount.
+           // Let's run it only when opening the menu?
+           const res = await fetch(`/api/profile?username=${post.user.username}`);
+           if (res.ok) {
+               const data = await res.json();
+               setIsFollowing(data.profile.is_following);
+               setHasCheckedFollow(true);
+           }
+      } catch (e) { console.error(e); }
+  };
+
+  const handleFollow = async () => {
+    try {
+      const res = await fetch('/api/users/follow', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: post.user_id })
+      });
+      
+      if (res.ok) {
+          const data = await res.json();
+          setIsFollowing(data.following);
+          alert(data.following ? "Following user!" : "Unfollowed user!");
+      }
+    } catch {
+      alert("Failed so update follow status");
+    } finally {
+      setShowMenu(false);
+    }
+  };
+
+  const handleBlock = async () => {
+    if (!confirm(`Block @${post.user.username}? You won't see their posts anymore.`)) return;
+    
+    try {
+      const res = await fetch('/api/users/block', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: post.user_id })
+      });
+      
+      if (res.ok) {
+        setIsHidden(true);
+        onHide?.(post.id);
+        alert("User blocked");
+      }
+    } catch {
+      alert("Failed to block user");
+    } finally {
+      setShowMenu(false);
+    }
+  };
+
+  const handleMute = async () => {
+    try {
+      await fetch('/api/users/mute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: post.user_id })
+      });
+      alert("User muted");
+    } catch {
+      alert("Failed to mute user");
+    } finally {
+      setShowMenu(false);
+    }
+  };
+
+  const handleReport = async () => {
+    const reason = prompt("Why are you reporting this post? (optional)");
+    
+    try {
+      const res = await fetch('/api/posts/report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ post_id: post.id, reason })
+      });
+      
+      if (res.ok) {
+        alert("Post reported. Thank you for helping keep our community safe.");
+      } else {
+        const data = await res.json();
+        alert(data.error || "Failed to report post");
+      }
+    } catch {
+      alert("Failed to report post");
+    } finally {
+      setShowMenu(false);
+    }
+  };
+
+  const handleShare = async () => {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/post/${post.id}`);
+      alert("Link copied to clipboard!");
+    } catch {
+      alert("Failed to copy link");
+    }
+    setShowMenu(false);
+  };
+
+  if (isDeleted || isHidden) return null;
 
   return (
     <motion.article
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="mb-6 relative group"
+      className="relative group"
     >
-      {/* Soft Glow Background */}
-      <div className="absolute -inset-4 bg-gradient-to-r from-primary/5 via-primary/5 to-purple-500/5 rounded-3xl blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
-
-      <div className="relative bg-black/20 backdrop-blur-xl rounded-[2rem] px-4 py-5 md:p-8 border border-white/5 shadow-xl ring-1 ring-white/5">
+      <div className="px-4 py-5 md:px-0 md:py-6 border-b border-white/10">
         
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
-           <div className="flex items-center gap-4">
+           <Link href={`/user/${post.user.username}`} className="flex items-center gap-4 hover:opacity-80 transition-opacity">
               <div className="relative">
-                <div className="absolute inset-0 bg-primary/20 blur-md rounded-full -z-10" />
                 <img
                   src={post.user.avatar_url || "/default-avatar.png"}
                   alt={post.user.username}
-                  className="w-14 h-14 rounded-2xl object-cover border border-white/10 shadow-lg"
+                  className="w-12 h-12 rounded-full object-cover border border-white/10"
                 />
               </div>
               <div>
                  <h3 className="font-bold text-lg text-white/90">{post.user.full_name}</h3>
                  <p className="text-sm text-muted-foreground">@{post.user.username}</p>
               </div>
-           </div>
+           </Link>
            
            <div className="relative">
              <button 
-                onClick={() => setShowMenu(!showMenu)}
-                className="p-3 hover:bg-white/5 rounded-full transition-colors text-muted-foreground hover:text-white"
+                onClick={() => {
+                    setShowMenu(!showMenu);
+                    if (!showMenu) checkFollowStatus();
+                }}
+                className="p-3 hover:bg-white/5 rounded-full transition-colors text-muted-foreground hover:text-white relative z-50"
              >
                 <MoreHorizontal />
              </button>
+
+             {showMenu && (
+                 <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)} />
+             )}
 
              <AnimatePresence>
                 {showMenu && (
@@ -125,23 +311,28 @@ export function PostCard({ post }: PostCardProps) {
                              </div>
                         ) : (
                             <div className="flex flex-col">
-                                <button className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 flex items-center gap-2">
-                                    <Bookmark size={16} /> Save Post
+                                <button onClick={handleSave} className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 flex items-center gap-2">
+                                    <Bookmark size={16} /> {isSaved ? 'Unsave Post' : 'Save Post'}
                                 </button>
-                                <button className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 flex items-center gap-2">
+                                <button onClick={handleShare} className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 flex items-center gap-2">
                                     <Share2 size={16} /> Share
                                 </button>
-                                <button className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 flex items-center gap-2">
-                                    <UserPlus size={16} /> Follow
+                                <button onClick={handleFollow} className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 flex items-center gap-2">
+                                    {isFollowing ? <UserMinus size={16} /> : <UserPlus size={16} />} 
+                                    {isFollowing ? "Unfollow" : "Follow"}
                                 </button>
-                                <button className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 flex items-center gap-2">
-                                    <EyeOff size={16} /> Hide Post
-                                </button>
-                                <button className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 flex items-center gap-2">
+                                
+                                {!pathname?.includes('/user/') && !pathname?.includes('/profile') && (
+                                    <button onClick={handleHide} className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 flex items-center gap-2">
+                                        <EyeOff size={16} /> Hide Post
+                                    </button>
+                                )}
+                                
+                                <button onClick={handleBlock} className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 flex items-center gap-2">
                                     <Ban size={16} /> Block User
                                 </button>
                                 <div className="h-px bg-white/10 my-1" />
-                                <button className="w-full text-left px-4 py-2.5 text-sm text-red-400 hover:bg-white/5 flex items-center gap-2">
+                                <button onClick={handleReport} className="w-full text-left px-4 py-2.5 text-sm text-red-400 hover:bg-white/5 flex items-center gap-2">
                                     <Flag size={16} /> Report
                                 </button>
                             </div>
@@ -241,10 +432,15 @@ export function PostCard({ post }: PostCardProps) {
                        count={post.comments_count} 
                     />
                     <ActionBtn 
-                       icon={<Share2 size={22} />} 
+                       icon={<Share2 size={22} />}
+                       onClick={handleShare}
                     />
                 </div>
-                <ActionBtn icon={<Bookmark size={22} className={isSaved ? "fill-primary text-primary stroke-primary" : ""} />} onClick={() => setIsSaved(!isSaved)} />
+                <ActionBtn 
+                   icon={<Bookmark size={22} className={isSaved ? "fill-white text-white" : ""} />}
+                   onClick={handleSave}
+                   active={isSaved}
+                />
            </div>
         </div>
 

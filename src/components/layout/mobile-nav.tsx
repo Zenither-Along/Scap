@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Home, Search, PlusSquare, Heart, User, MessageCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -16,6 +16,12 @@ const NAV_ITEMS = [
 
 export function MobileNav() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  // Hide on active chat page (messages with conversation selected)
+  if (pathname === '/messages' && searchParams.get('c')) {
+    return null;
+  }
 
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 h-16 glass-nav z-50 px-6 safe-area-bottom">

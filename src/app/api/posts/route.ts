@@ -31,8 +31,9 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const limit = parseInt(searchParams.get('limit') || '20');
+    const userId = searchParams.get('user_id');
     
-    const { data: posts, error } = await supabaseAdmin
+    let query = supabaseAdmin
       .from('posts')
       .select(`
         *,
@@ -41,6 +42,13 @@ export async function GET(req: Request) {
       `)
       .order('created_at', { ascending: false })
       .limit(limit);
+
+    // Filter by user if specified
+    if (userId) {
+      query = query.eq('user_id', userId);
+    }
+
+    const { data: posts, error } = await query;
 
     if (error) {
         console.error("Supabase Fetch Error:", error);
@@ -110,6 +118,50 @@ export async function POST(req: Request) {
 
   } catch (error: any) {
     console.error("Create Post Error:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: Request) {
+  try {
+    const user = await currentUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const postId = searchParams.get('id');
+
+    if (!postId) {
+      return NextResponse.json({ error: "Post ID required" }, { status: 400 });
+    }
+
+    // Verify ownership before deletion
+    const { data: post, error: fetchError } = await supabaseAdmin
+      .from('posts')
+      .select('user_id')
+      .eq('id', postId)
+      .single();
+
+    if (fetchError || !post) {
+      return NextResponse.json({ error: "Post not found" }, { status: 404 });
+    }
+
+    if (post.user_id !== user.id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const { error } = await supabaseAdmin
+      .from('posts')
+      .delete()
+      .eq('id', postId);
+
+    if (error) throw error;
+
+    return NextResponse.json({ success: true });
+
+  } catch (error: any) {
+    console.error("Delete Post Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

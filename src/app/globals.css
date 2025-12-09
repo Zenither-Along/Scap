@@ -23,7 +23,7 @@
   --popover: #121212;
   --popover-foreground: #ededed;
 
-  --primary: #8a2be2; /* Neon Purple */
+  --primary: #6b7280; /* Neutral Gray */
   --primary-foreground: #ffffff;
 
   --secondary: #2a2a2a;
@@ -32,7 +32,7 @@
   --muted: #1f1f1f;
   --muted-foreground: #737373;
 
-  --accent: #8a2be2;
+  --accent: #6b7280;
   --accent-foreground: #ffffff;
 
   --destructive: #ef4444;
@@ -40,7 +40,7 @@
 
   --border: #262626;
   --input: #262626;
-  --ring: #8a2be2;
+  --ring: #6b7280;
 
   --radius: 0.75rem;
 }
