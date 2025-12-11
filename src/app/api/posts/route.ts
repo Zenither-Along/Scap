@@ -32,33 +32,81 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const limit = parseInt(searchParams.get('limit') || '20');
     const userId = searchParams.get('user_id');
+    const searchQuery = searchParams.get('q');
     
-    let query = supabaseAdmin
-      .from('posts')
-      .select(`
-        *,
-        user:users(id, username, full_name, avatar_url),
-        likes(user_id)
-      `)
-      .order('created_at', { ascending: false })
-      .limit(limit);
+    // Get current user for feed logic
+    const user = await currentUser();
+    const currentUserId = user?.id;
 
-    // Filter by user if specified
-    if (userId) {
-      query = query.eq('user_id', userId);
+    let posts;
+    let error;
+
+    // SCENARIO 1: Search or Profile View - Use standard query
+    if (userId || searchQuery) {
+        let query = supabaseAdmin
+        .from('posts')
+        .select(`
+            *,
+            user:users(id, username, full_name, avatar_url),
+            likes(user_id)
+        `)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+        if (userId) {
+            query = query.eq('user_id', userId);
+        }
+
+        if (searchQuery) {
+            query = query.ilike('content', `%${searchQuery}%`);
+        }
+        
+        const result = await query;
+        posts = result.data;
+        error = result.error;
+
+    } 
+    // SCENARIO 2: Main Feed - Use Hybrid Algorithm
+    else if (currentUserId) {
+        // Use the RPC to get sorted IDs/Records, then join Relation Data
+        // Note: RPC returns 'setof posts', so we can chain .select()!
+        const result = await supabaseAdmin
+            .rpc('get_hybrid_feed', { 
+                p_user_id: currentUserId, 
+                p_limit: limit, 
+                p_offset: 0 
+            })
+            .select(`
+                *,
+                user:users(id, username, full_name, avatar_url),
+                likes(user_id)
+            `);
+            
+        posts = result.data;
+        error = result.error;
+    } 
+    // SCENARIO 3: Public Feed (No Auth) - Standard fallback
+    else {
+        const result = await supabaseAdmin
+            .from('posts')
+            .select(`
+                *,
+                user:users(id, username, full_name, avatar_url),
+                likes(user_id)
+            `)
+            .order('created_at', { ascending: false })
+            .limit(limit);
+            
+        posts = result.data;
+        error = result.error;
     }
-
-    const { data: posts, error } = await query;
 
     if (error) {
         console.error("Supabase Fetch Error:", error);
         throw error;
     }
 
-    const user = await currentUser();
-    const currentUserId = user?.id;
-
-    const formattedPosts = posts.map(post => ({
+    const formattedPosts = (posts || []).map((post: any) => ({
         ...post,
         likes_count: post.likes ? post.likes.length : 0,
         is_liked: currentUserId ? post.likes.some((like: any) => like.user_id === currentUserId) : false,

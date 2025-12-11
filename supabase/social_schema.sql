@@ -104,3 +104,33 @@ create index if not exists idx_blocked_blocker on public.blocked_users(blocker_i
 create index if not exists idx_muted_muter on public.muted_users(muter_id);
 create index if not exists idx_hidden_user on public.hidden_posts(user_id);
 create index if not exists idx_reports_status on public.reports(status);
+
+-- ============================================
+-- 7. COMMENTS
+-- ============================================
+create table if not exists public.comments (
+  id uuid default uuid_generate_v4() primary key,
+  post_id uuid references public.posts(id) on delete cascade not null,
+  user_id text references public.users(id) on delete cascade not null,
+  content text not null,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- RLS
+alter table public.comments enable row level security;
+
+create policy "Comments are viewable by everyone"
+  on public.comments for select
+  using ( true );
+
+create policy "Authenticated users can create comments"
+  on public.comments for insert
+  with check ( auth.uid()::text = user_id );
+
+create policy "Users can delete their own comments"
+  on public.comments for delete
+  using ( auth.uid()::text = user_id );
+
+-- Indexes
+create index if not exists idx_comments_post on public.comments(post_id);
+create index if not exists idx_comments_user on public.comments(user_id);

@@ -1,9 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, Hash, Star, Zap, Code, Image as ImageIcon, ArrowUpRight } from "lucide-react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
+
+interface User {
+  id: string;
+  username: string;
+  full_name: string;
+  avatar_url: string;
+}
 
 // Mock Data for "Unregular" Layout
 const EXPLORE_ITEMS = [
@@ -17,30 +26,102 @@ const EXPLORE_ITEMS = [
 ];
 
 export default function ExplorePage() {
+  const router = useRouter();
   const [activeFilter, setActiveFilter] = useState("all");
   const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  
+  // Suggestions State
+  const [suggestions, setSuggestions] = useState<User[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  // Suggestions Fetcher (Debounced)
+  useEffect(() => {
+    const fetchSuggestions = async () => {
+        if (!searchQuery.trim() || searchQuery.length < 2) {
+            setSuggestions([]);
+            return;
+        }
+
+        try {
+            const res = await fetch(`/api/users/search?q=${encodeURIComponent(searchQuery)}&limit=5`);
+            if (res.ok) {
+                const data = await res.json();
+                setSuggestions(data.users || []);
+            }
+        } catch (error) {
+            console.error("Suggestion error:", error);
+        }
+    };
+
+    const timer = setTimeout(() => {
+        if (showSuggestions) fetchSuggestions();
+    }, 200);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery, showSuggestions]);
+
+  const handleSearch = () => {
+    if (searchQuery.trim()) {
+      router.push(`/explore/search?q=${encodeURIComponent(searchQuery)}`);
+    }
+  };
 
   return (
     <div className="min-h-screen pb-20 pt-8 px-4 md:px-8 max-w-[1600px] mx-auto">
       
       {/* 1. Header Area: Floating Search & Tags */}
-      <div className="flex flex-col md:flex-row items-center justify-between gap-8 mb-12 sticky top-4 z-40 pointer-events-none">
+      <div className="flex flex-col md:flex-row items-center justify-between gap-6 md:gap-8 mb-8 md:mb-12 z-40 pointer-events-none relative">
          {/* 'Morphing' Search Bar */}
          <div className={cn(
-             "pointer-events-auto transition-all duration-500 ease-out bg-black/60 backdrop-blur-xl border border-white/10 rounded-full flex items-center px-6 shadow-2xl overflow-hidden",
-             isSearchFocused ? "w-full md:w-[600px] ring-2 ring-primary/50" : "w-full md:w-[400px]"
+             "relative pointer-events-auto transition-all duration-500 ease-out bg-black/60 backdrop-blur-xl border border-white/10 rounded-3xl flex flex-col shadow-2xl overflow-visible z-50",
+             isSearchFocused ? "w-full md:w-[600px] border-white/30 bg-black/80 shadow-[0_0_30px_-5px_rgba(255,255,255,0.1)]" : "w-full md:w-[400px] rounded-full"
          )}>
-             <Search size={20} className="text-muted-foreground min-w-[20px]" />
-             <input 
-               type="text" 
-               placeholder="Search the universe..." 
-               className="w-full bg-transparent border-none focus:ring-0 py-4 text-lg placeholder:text-muted-foreground/50"
-               onFocus={() => setIsSearchFocused(true)}
-               onBlur={() => setIsSearchFocused(false)}
-             />
-             <div className="hidden md:flex gap-2">
-                 <kbd className="px-2 py-0.5 rounded-lg bg-white/10 text-[10px] font-mono text-muted-foreground">CRTL+K</kbd>
+             <div className="flex items-center px-6 gap-3 w-full">
+                <Search size={20} className="text-muted-foreground min-w-[20px]" />
+                <input 
+                  type="text" 
+                  placeholder="Search the universe..." 
+                  className="w-full bg-transparent border-none outline-none focus:outline-none focus:ring-0 py-4 text-lg placeholder:text-muted-foreground/50"
+                  onFocus={() => { setIsSearchFocused(true); setShowSuggestions(true); }}
+                  onBlur={() => { setIsSearchFocused(false); setTimeout(() => setShowSuggestions(false), 200); }}
+                  value={searchQuery}
+                  onChange={(e) => { setSearchQuery(e.target.value); setShowSuggestions(true); }}
+                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                />
              </div>
+
+             {/* Suggestions Dropdown */}
+             <AnimatePresence>
+                {showSuggestions && suggestions.length > 0 && isSearchFocused && (
+                    <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="w-full px-2 pb-2"
+                    >
+                        <div className="h-px bg-white/10 mx-4 mb-2" />
+                        <div className="px-4 py-2 text-xs font-bold text-muted-foreground uppercase tracking-wider">Suggested Users</div>
+                        {suggestions.map((user) => (
+                            <Link
+                                key={user.id}
+                                href={`/user/${user.username}`}
+                                className="flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition-colors rounded-xl"
+                            >
+                                <img 
+                                    src={user.avatar_url || '/default-avatar.png'} 
+                                    alt={user.username} 
+                                    className="w-10 h-10 rounded-full bg-neutral-800 object-cover"
+                                />
+                                <div>
+                                    <div className="text-sm font-bold text-white">{user.full_name}</div>
+                                    <div className="text-xs text-muted-foreground">@{user.username}</div>
+                                </div>
+                            </Link>
+                        ))}
+                    </motion.div>
+                )}
+             </AnimatePresence>
          </div>
 
          {/* Floating Tags */}
@@ -55,7 +136,7 @@ export default function ExplorePage() {
                    key={tag.id}
                    onClick={() => setActiveFilter(tag.id)}
                    className={cn(
-                      "flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold whitespace-nowrap transition-all border",
+                      "flex items-center gap-2 px-4 py-2 md:px-5 md:py-2.5 rounded-full text-xs md:text-sm font-bold whitespace-nowrap transition-all border",
                       activeFilter === tag.id ? "bg-white text-black border-white scale-105" : "bg-black/40 text-muted-foreground border-white/10 hover:border-white/30 hover:text-white"
                    )}
                 >

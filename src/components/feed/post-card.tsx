@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { CodeBlock } from "./code-block";
 import { LivePreview } from "./live-preview";
 import { useUser } from "@clerk/nextjs";
+import { CommentsSheet } from "./comments-sheet";
 
 export interface Post {
   id: string;
@@ -55,6 +56,7 @@ export function PostCard({ post, onHide }: PostCardProps) {
   const [isDeleted, setIsDeleted] = useState(false);
   const [isHidden, setIsHidden] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [showComments, setShowComments] = useState(false);
 
   const handleLike = async () => {
     // Optimistic update
@@ -430,6 +432,7 @@ export function PostCard({ post, onHide }: PostCardProps) {
                     <ActionBtn 
                        icon={<MessageCircle size={22} />} 
                        count={post.comments_count} 
+                       onClick={() => setShowComments(true)}
                     />
                     <ActionBtn 
                        icon={<Share2 size={22} />}
@@ -445,6 +448,13 @@ export function PostCard({ post, onHide }: PostCardProps) {
         </div>
 
       </div>
+
+      <CommentsSheet 
+        isOpen={showComments} 
+        onClose={() => setShowComments(false)} 
+        postId={post.id}
+        postOwnerId={post.user_id}
+      />
     </motion.article>
   );
 }
