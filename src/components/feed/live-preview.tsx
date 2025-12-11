@@ -184,26 +184,43 @@ export function LivePreview({ code, language, compiledCode }: LivePreviewProps) 
   }, [code]);
 
   // Resize handling
-  const handleResizeStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
+  const handleResizeStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    // Prevent default only if necessary, but for scrolling we might want to be careful.
+    // However, for a resize handle, we usually want to prevent scrolling while dragging.
+    if (e.type === 'mousedown') e.preventDefault();
+    
     setIsResizing(true);
-    const startY = e.clientY;
+    // @ts-ignore
+    const startY = e.clientY || e.touches?.[0]?.clientY;
     const startHeight = height;
     
-    const handleMouseMove = (e: MouseEvent) => {
-      const delta = e.clientY - startY;
+    const handleMove = (moveEvent: MouseEvent | TouchEvent) => {
+      // Prevent scrolling while dragging on touch
+      if (moveEvent.type === 'touchmove') {
+          moveEvent.preventDefault();
+      }
+
+      // @ts-ignore
+      const clientY = moveEvent.clientY || moveEvent.touches?.[0]?.clientY;
+      if (!clientY) return;
+      
+      const delta = clientY - startY;
       const newHeight = Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, startHeight + delta));
       setHeight(newHeight);
     };
     
-    const handleMouseUp = () => {
+    const handleEnd = () => {
       setIsResizing(false);
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('mousemove', handleMove);
+      document.removeEventListener('mouseup', handleEnd);
+      document.removeEventListener('touchmove', handleMove);
+      document.removeEventListener('touchend', handleEnd);
     };
     
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('mousemove', handleMove);
+    document.addEventListener('mouseup', handleEnd);
+    document.addEventListener('touchmove', handleMove, { passive: false });
+    document.addEventListener('touchend', handleEnd);
   }, [height]);
 
   // Generate preview HTML based on language
@@ -301,6 +318,7 @@ export function LivePreview({ code, language, compiledCode }: LivePreviewProps) 
       {/* Resize Handle */}
       <div 
         onMouseDown={handleResizeStart}
+        onTouchStart={handleResizeStart}
         className={`w-full h-3 flex items-center justify-center cursor-ns-resize hover:bg-white/10 transition-colors ${isResizing ? 'bg-primary/30' : 'bg-white/5'}`}
       >
         <div className="w-10 h-1 rounded-full bg-white/30" />

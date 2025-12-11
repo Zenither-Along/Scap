@@ -1,13 +1,16 @@
 "use client";
 
 import { useUser } from "@clerk/nextjs";
-import { MapPin, Link as LinkIcon, Calendar, Edit2, Grid, Heart, MessageCircle } from "lucide-react";
+import { MapPin, Link as LinkIcon, Calendar, Edit2, Grid, Bookmark, MessageCircle } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Feed } from "@/components/feed/feed"; 
+import { PostCard } from "@/components/feed/post-card"; 
 import { cn } from "@/lib/utils";
 import { useSupabase } from "@/lib/supabase";
 import { EditProfileDialog } from "@/components/profile/edit-profile-dialog";
 import { FollowsDialog } from "@/components/profile/follows-dialog";
+
+import { ReplyCard } from "@/components/profile/reply-card";
 
 export default function ProfilePage() {
   const { user, isLoaded } = useUser();
@@ -20,6 +23,10 @@ export default function ProfilePage() {
   const [showFollowsDialog, setShowFollowsDialog] = useState(false);
   const [followsTab, setFollowsTab] = useState<"followers" | "following">("followers");
   
+  // Data States
+  const [replies, setReplies] = useState<any[]>([]);
+  const [savedPosts, setSavedPosts] = useState<any[]>([]);
+  
   // Real Stats State
   const [stats, setStats] = useState({
     following: 0,
@@ -29,7 +36,8 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (user?.id) {
-      const fetchProfile = async () => {
+       // ... fetch profile ...
+       const fetchProfile = async () => {
         // Fetch user data
         const { data } = await supabase.from('users').select('*').eq('id', user.id).single();
         if (data) setProfileData(data);
@@ -50,8 +58,24 @@ export default function ProfilePage() {
         }
       };
       fetchProfile();
+      
+      // Fetch Replies if tab is active
+      if (activeTab === "replies") {
+          fetch(`/api/comments?user_id=${user.id}`)
+            .then(res => res.json())
+            .then(data => setReplies(data.comments || []))
+            .catch(console.error);
+      }
+      
+      // Fetch Saved Posts if tab is active
+      if (activeTab === "saved") {
+          fetch('/api/posts/saved')
+            .then(res => res.json())
+            .then(data => setSavedPosts(data.posts || []))
+            .catch(console.error);
+      }
     }
-  }, [user?.id, supabase, user?.username]);
+  }, [user?.id, supabase, user?.username, activeTab]);
 
   if (!isLoaded || !user) {
     return (
@@ -156,8 +180,8 @@ export default function ProfilePage() {
             </div>
 
             {/* Tabs */}
-            <div className="flex border-b border-neutral-800 mt-10">
-              {["posts", "media", "likes"].map((tab) => (
+            <div className="flex border-b border-neutral-800 mt-10 mb-2">
+              {["posts", "replies", "saved"].map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
@@ -181,25 +205,37 @@ export default function ProfilePage() {
         {/* Content Section */}
         <div className="max-w-2xl mx-auto px-4 min-h-[400px]"> 
             {activeTab === "posts" && (
-                <Feed />
+                <Feed userId={user.id} hideHeader={true} className="mt-0" />
             )}
             
-            {activeTab === "media" && (
-                 <div className="grid grid-cols-3 gap-1">
-                    {[1,2,3,4,5,6].map((i) => (
-                       <div key={i} className="aspect-square bg-neutral-900 cursor-pointer relative overflow-hidden group">
-                            <img src={`https://picsum.photos/500?random=${i}`} className="w-full h-full object-cover" />
-                            <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity" />
-                       </div>
-                    ))}
+            {activeTab === "replies" && (
+                 <div className="flex flex-col">
+                    {replies.length === 0 ? (
+                        <div className="text-center py-12 text-neutral-600">
+                             <MessageCircle size={48} className="mx-auto mb-4 opacity-20" />
+                             <p>No replies yet</p>
+                        </div>
+                    ) : (
+                        replies.map((reply) => (
+                            <ReplyCard key={reply.id} comment={reply} />
+                        ))
+                    )}
                  </div>
             )}
 
-            {activeTab === "likes" && (
-                <div className="flex flex-col items-center justify-center py-20 text-neutral-600">
-                    <Heart size={48} className="mb-4 stroke-1 opacity-20" />
-                    <p>No liked posts yet</p>
-                </div>
+            {activeTab === "saved" && (
+                savedPosts.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-20 text-neutral-600">
+                        <Bookmark size={48} className="mb-4 stroke-1 opacity-20" />
+                        <p>No saved posts yet</p>
+                    </div>
+                ) : (
+                    <div>
+                        {savedPosts.map((post) => (
+                            <PostCard key={post.id} post={post} />
+                        ))}
+                    </div>
+                )
             )}
         </div>
 

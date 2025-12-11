@@ -3,14 +3,14 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
-import { Home, Search, PlusSquare, Heart, User, MessageCircle } from "lucide-react";
+import { Home, Search, PlusSquare, Heart, User, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { icon: Home, label: "Home", href: "/" },
   { icon: Search, label: "Explore", href: "/explore" },
   { icon: PlusSquare, label: "Create", href: "/create" },
-  { icon: MessageCircle, label: "Messages", href: "/messages" },
+  { icon: Send, label: "Messages", href: "/messages" },
   { icon: User, label: "Profile", href: "/profile" },
 ];
 

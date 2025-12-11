@@ -25,9 +25,10 @@ interface CommentsSheetProps {
   onClose: () => void;
   postId: string;
   postOwnerId: string;
+  highlightCommentId?: string | null;
 }
 
-export function CommentsSheet({ isOpen, onClose, postId, postOwnerId }: CommentsSheetProps) {
+export function CommentsSheet({ isOpen, onClose, postId, postOwnerId, highlightCommentId }: CommentsSheetProps) {
   const { user } = useUser();
   const [comments, setComments] = useState<Comment[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -35,6 +36,10 @@ export function CommentsSheet({ isOpen, onClose, postId, postOwnerId }: Comments
   const [isSubmitting, setIsSubmitting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   
+  // Refs for scrolling
+  const commentsEndRef = useRef<HTMLDivElement>(null);
+  const commentRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
+
   // Responsive check: md breakpoint is usually 768px
   const isDesktop = useMediaQuery("(min-width: 768px)");
 
@@ -43,6 +48,22 @@ export function CommentsSheet({ isOpen, onClose, postId, postOwnerId }: Comments
       fetchComments();
     }
   }, [isOpen, postId]);
+
+  // Effect to handle deep linking scroll after comments are loaded
+  useEffect(() => {
+    if (!isLoading && highlightCommentId && comments.length > 0 && isOpen) {
+        // Must wait a slight tick for rendering
+        setTimeout(() => {
+            const el = commentRefs.current[highlightCommentId];
+            if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                // Optional: Flash effect
+                el.classList.add('bg-white/10');
+                setTimeout(() => el.classList.remove('bg-white/10'), 2000);
+            }
+        }, 300);
+    }
+  }, [isLoading, highlightCommentId, comments, isOpen]);
 
   const fetchComments = async () => {
     setIsLoading(true);
@@ -74,6 +95,12 @@ export function CommentsSheet({ isOpen, onClose, postId, postOwnerId }: Comments
       if (res.ok) {
         await fetchComments(); 
         setNewComment("");
+        // Scroll to new comment manually or bottom
+        // If we want chat-like behavior, scroll to bottom.
+        // Or if we prepend/append. Currently API sorts oldest first.
+        setTimeout(() => {
+            if (commentsEndRef.current) commentsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+        }, 100);
       }
     } catch (e) {
       console.error(e);
@@ -153,7 +180,11 @@ export function CommentsSheet({ isOpen, onClose, postId, postOwnerId }: Comments
                 </div>
               ) : (
                 comments.map((comment) => (
-                  <div key={comment.id} className="flex gap-4 group">
+                  <div 
+                    key={comment.id} 
+                    className="flex gap-4 group transition-colors duration-500 rounded-lg p-2 -mx-2"
+                    ref={(el) => { commentRefs.current[comment.id] = el; }}
+                  >
                     <Link href={`/user/${comment.user.username}`} className="shrink-0">
                       <img
                         src={comment.user.avatar_url || "/default-avatar.png"}
@@ -186,6 +217,7 @@ export function CommentsSheet({ isOpen, onClose, postId, postOwnerId }: Comments
                   </div>
                 ))
               )}
+              <div ref={commentsEndRef} />
             </div>
 
             {/* Input */}

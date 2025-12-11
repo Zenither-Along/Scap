@@ -33,6 +33,7 @@ export async function GET(req: Request) {
     const limit = parseInt(searchParams.get('limit') || '20');
     const userId = searchParams.get('user_id');
     const searchQuery = searchParams.get('q');
+    const postId = searchParams.get('id');
     
     // Get current user for feed logic
     const user = await currentUser();
@@ -41,8 +42,8 @@ export async function GET(req: Request) {
     let posts;
     let error;
 
-    // SCENARIO 1: Search or Profile View - Use standard query
-    if (userId || searchQuery) {
+    // SCENARIO 1: Search, Single Post, or Profile View - Use standard query
+    if (userId || searchQuery || postId) {
         let query = supabaseAdmin
         .from('posts')
         .select(`
@@ -52,6 +53,10 @@ export async function GET(req: Request) {
         `)
         .order('created_at', { ascending: false })
         .limit(limit);
+
+        if (postId) {
+            query = query.eq('id', postId);
+        }
 
         if (userId) {
             query = query.eq('user_id', userId);

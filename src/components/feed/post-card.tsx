@@ -2,14 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Heart, MessageCircle, Share2, Bookmark, MoreHorizontal, Code, Play, Trash2, Flag, EyeOff, UserPlus, UserMinus, Edit, Ban } from "lucide-react";
+import { Heart, CornerUpLeft, Share2, Bookmark, MoreHorizontal, Code, Play, Trash2, Flag, EyeOff, UserPlus, UserMinus, Edit, Ban } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CodeBlock } from "./code-block";
 import { LivePreview } from "./live-preview";
 import { useUser } from "@clerk/nextjs";
-import { CommentsSheet } from "./comments-sheet";
 
 export interface Post {
   id: string;
@@ -32,7 +31,7 @@ export interface Post {
   created_at: string;
 }
 
-interface PostCardProps {
+  interface PostCardProps {
   post: Post;
   currentUserId?: string;
   onHide?: (postId: string) => void;
@@ -41,6 +40,7 @@ interface PostCardProps {
 export function PostCard({ post, onHide }: PostCardProps) {
   const { user } = useUser();
   const pathname = usePathname();
+  const router = useRouter();
   const isOwner = user?.id === post.user_id;
   
   // Default to code view if language doesn't support live preview
@@ -51,13 +51,16 @@ export function PostCard({ post, onHide }: PostCardProps) {
   const [likesCount, setLikesCount] = useState(post.likes_count);
   const [isSaved, setIsSaved] = useState(post.is_saved || false);
   const [showMenu, setShowMenu] = useState(false);
-  const [isFollowing, setIsFollowing] = useState(false); // We'd ideally fetch this or pass it in
+  const [isFollowing, setIsFollowing] = useState(false);
   const [hasCheckedFollow, setHasCheckedFollow] = useState(false);
   const [isDeleted, setIsDeleted] = useState(false);
   const [isHidden, setIsHidden] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [showComments, setShowComments] = useState(false);
 
+  // If props change (e.g. navigation back to page), ensure state updates
+  // But usually initial state is enough. However, if we deep link again...
+  // Let's stick to initial state for now.
+  
   const handleLike = async () => {
     // Optimistic update
     setIsLiked(!isLiked);
@@ -430,9 +433,9 @@ export function PostCard({ post, onHide }: PostCardProps) {
                        onClick={handleLike}
                     />
                     <ActionBtn 
-                       icon={<MessageCircle size={22} />} 
+                       icon={<CornerUpLeft size={22} />} 
                        count={post.comments_count} 
-                       onClick={() => setShowComments(true)}
+                       onClick={() => router.push(`/post/${post.id}`)}
                     />
                     <ActionBtn 
                        icon={<Share2 size={22} />}
@@ -449,12 +452,6 @@ export function PostCard({ post, onHide }: PostCardProps) {
 
       </div>
 
-      <CommentsSheet 
-        isOpen={showComments} 
-        onClose={() => setShowComments(false)} 
-        postId={post.id}
-        postOwnerId={post.user_id}
-      />
     </motion.article>
   );
 }

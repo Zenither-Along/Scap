@@ -25,6 +25,8 @@ interface UserProfile {
 
 import { FollowsDialog } from "@/components/profile/follows-dialog";
 
+import { ReplyCard } from "@/components/profile/reply-card";
+
 export default function UserProfilePage() {
   const params = useParams();
   const router = useRouter();
@@ -32,6 +34,7 @@ export default function UserProfilePage() {
   
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
+  const [replies, setReplies] = useState<any[]>([]); // New State
   const [loading, setLoading] = useState(true);
   const [isFollowing, setIsFollowing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
@@ -60,6 +63,15 @@ export default function UserProfilePage() {
         router.push('/profile');
         return;
       }
+      
+      // Fetch user posts immediately if profile found
+       if (data.profile.id) {
+           const postsRes = await fetch(`/api/posts?user_id=${data.profile.id}&limit=20`);
+           if (postsRes.ok) {
+                const postsData = await postsRes.json();
+                setPosts(postsData.posts || []);
+           }
+       }
     } catch (error) {
       console.error(error);
     } finally {
@@ -67,29 +79,19 @@ export default function UserProfilePage() {
     }
   }, [username, router]);
 
-  const fetchUserPosts = useCallback(async () => {
-    if (!profile?.id) return;
-    
-    try {
-      const res = await fetch(`/api/posts?user_id=${profile.id}&limit=20`);
-      if (res.ok) {
-        const data = await res.json();
-        setPosts(data.posts || []);
-      }
-    } catch (error) {
-      console.error(error);
+  // Fetch Replies effect
+  useEffect(() => {
+    if (activeTab === "replies" && profile?.id) {
+         fetch(`/api/comments?user_id=${profile.id}`)
+            .then(res => res.json())
+            .then(data => setReplies(data.comments || []))
+            .catch(console.error);
     }
-  }, [profile?.id]);
+  }, [activeTab, profile?.id]);
 
   useEffect(() => {
     fetchProfile();
   }, [fetchProfile]);
-
-  useEffect(() => {
-    if (profile?.id) {
-      fetchUserPosts();
-    }
-  }, [profile?.id, fetchUserPosts]);
 
   const handleFollow = async () => {
     if (!profile || followLoading) return;
@@ -306,8 +308,8 @@ export default function UserProfilePage() {
         )}
 
         {/* Tabs */}
-        <div className="flex border-b border-neutral-800 mt-10 mb-6">
-            {["posts", "media", "likes"].map((tab) => (
+        <div className="flex border-b border-neutral-800 mt-10 mb-2">
+            {["posts", "replies", "likes"].map((tab) => (
             <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -343,14 +345,18 @@ export default function UserProfilePage() {
                 )
             )}
 
-             {activeTab === "media" && (
-                 <div className="grid grid-cols-3 gap-1">
-                    {[1,2,3].map((i) => (
-                       <div key={i} className="aspect-square bg-neutral-900 cursor-pointer relative overflow-hidden group">
-                            <img src={`https://picsum.photos/500?random=${i}`} className="w-full h-full object-cover" />
-                            <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity" />
-                       </div>
-                    ))}
+             {activeTab === "replies" && (
+                 <div className="flex flex-col">
+                    {replies.length === 0 ? (
+                        <div className="text-center py-12 text-neutral-600">
+                             <MessageCircle size={48} className="mx-auto mb-4 opacity-20" />
+                             <p>No replies yet</p>
+                        </div>
+                    ) : (
+                        replies.map((reply) => (
+                            <ReplyCard key={reply.id} comment={reply} />
+                        ))
+                    )}
                  </div>
             )}
 
