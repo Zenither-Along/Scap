@@ -5,7 +5,6 @@ import { X, Search } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
 
 interface FollowsDialogProps {
     isOpen: boolean;

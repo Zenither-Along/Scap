@@ -142,7 +142,7 @@ export function CommentsSheet({ isOpen, onClose, postId, postOwnerId, highlightC
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100]"
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-100"
           />
           
           {/* Sheet Container */}
@@ -151,7 +151,7 @@ export function CommentsSheet({ isOpen, onClose, postId, postOwnerId, highlightC
             animate={isDesktop ? { x: 0 } : { y: 0 }}
             exit={isDesktop ? { x: "100%" } : { y: "100%" }}
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            className={`fixed z-[101] bg-[#121212] border-white/10 shadow-2xl flex flex-col overflow-hidden
+            className={`fixed z-101 bg-[#121212] border-white/10 shadow-2xl flex flex-col overflow-hidden
               ${isDesktop 
                 ? "top-0 right-0 h-full w-[400px] border-l" 
                 : "bottom-0 left-0 w-full h-[85vh] rounded-t-2xl border-t"
