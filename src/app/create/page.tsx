@@ -8,6 +8,7 @@ import { useSupabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import { CodeBlock } from "@/components/feed/code-block";
 import { LivePreview } from "@/components/feed/live-preview";
+import toast from "react-hot-toast";
 
 const LANGUAGES = [
   { id: "tsx", label: "React (TSX)", icon: "R", hint: "Interactive" },
@@ -104,13 +105,13 @@ export default function CreatePost() {
       setContent("");
       setCodeSnippet("");
       removeMedia();
-      alert("Post created successfully!"); 
+      toast.success("Post created successfully!");
     } catch (error: any) {
       console.error("Error creating post:", error);
       if (error.message?.includes("column \"code_snippet\" of relation \"posts\" does not exist")) {
-         alert("Database Error: You haven't run the SQL update yet! The 'code_snippet' column is missing.");
+         toast.error("Database Error: You haven't run the SQL update yet! The 'code_snippet' column is missing.");
       } else {
-         alert(`Failed to create post: ${error.message || "Unknown error"}`);
+         toast.error(`Failed to create post: ${error.message || "Unknown error"}`);
       }
     } finally {
       setIsLoading(false);

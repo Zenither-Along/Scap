@@ -218,3 +218,77 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+
+// PATCH: Edit an existing post
+export async function PATCH(req: Request) {
+  try {
+    const user = await currentUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const postId = searchParams.get('id');
+
+    if (!postId) {
+      return NextResponse.json({ error: "Post ID required" }, { status: 400 });
+    }
+
+    const body = await req.json();
+    const { content, code_snippet, language } = body;
+
+    if (!content && !code_snippet) {
+      return NextResponse.json({ error: "Content or code snippet required" }, { status: 400 });
+    }
+
+    // Verify ownership before updating
+    const { data: post, error: fetchError } = await supabaseAdmin
+      .from('posts')
+      .select('user_id')
+      .eq('id', postId)
+      .single();
+
+    if (fetchError || !post) {
+      return NextResponse.json({ error: "Post not found" }, { status: 404 });
+    }
+
+    if (post.user_id !== user.id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    // Pre-compile code if provided
+    const compiled_code = code_snippet ? preCompileCode(code_snippet) : null;
+
+    // Update the post
+    const { data: updatedPost, error: updateError } = await supabaseAdmin
+      .from('posts')
+      .update({
+        content,
+        code_snippet,
+        language,
+        compiled_code
+      })
+      .eq('id', postId)
+      .select(`
+        *,
+        user:users(id, username, full_name, avatar_url),
+        likes(user_id)
+      `)
+      .single();
+
+    if (updateError) throw updateError;
+
+    // Format response similar to GET
+    const formattedPost = {
+      ...updatedPost,
+      is_liked: updatedPost.likes?.some((like: any) => like.user_id === user.id) || false,
+      likes_count: updatedPost.likes?.length || 0,
+    };
+
+    return NextResponse.json({ post: formattedPost });
+
+  } catch (error: any) {
+    console.error("Update Post Error:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}

@@ -9,6 +9,9 @@ import { cn } from "@/lib/utils";
 import { CodeBlock } from "./code-block";
 import { LivePreview } from "./live-preview";
 import { useUser } from "@clerk/nextjs";
+import { EditPostDialog } from "./edit-post-dialog";
+import toast from "react-hot-toast";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 export interface Post {
   id: string;
@@ -56,6 +59,8 @@ export function PostCard({ post, onHide }: PostCardProps) {
   const [isDeleted, setIsDeleted] = useState(false);
   const [isHidden, setIsHidden] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [currentPost, setCurrentPost] = useState(post);
 
   // If props change (e.g. navigation back to page), ensure state updates
   // But usually initial state is enough. However, if we deep link again...
@@ -102,7 +107,14 @@ export function PostCard({ post, onHide }: PostCardProps) {
   };
 
   const handleDelete = async () => {
-    if (!confirm("Are you sure you want to delete this post?")) return;
+    const confirmed = await useConfirm()({
+      title: "Delete Post",
+      message: "Are you sure you want to delete this post? This action cannot be undone.",
+      confirmText: "Delete",
+      isDanger: true,
+    });
+    
+    if (!confirmed) return;
     setIsLoading(true);
     
     try {
@@ -110,10 +122,10 @@ export function PostCard({ post, onHide }: PostCardProps) {
       if (res.ok) {
         setIsDeleted(true);
       } else {
-        alert("Failed to delete post");
+        toast.error("Failed to delete post");
       }
     } catch {
-      alert("Failed to delete post");
+      toast.error("Failed to delete post");
     } finally {
       setIsLoading(false);
       setShowMenu(false);
@@ -133,7 +145,7 @@ export function PostCard({ post, onHide }: PostCardProps) {
         onHide?.(post.id);
       }
     } catch {
-      alert("Failed to hide post");
+      toast.error("Failed to hide post");
     } finally {
       setShowMenu(false);
     }
@@ -174,17 +186,24 @@ export function PostCard({ post, onHide }: PostCardProps) {
       if (res.ok) {
           const data = await res.json();
           setIsFollowing(data.following);
-          alert(data.following ? "Following user!" : "Unfollowed user!");
+          toast.success(data.following ? "Following user!" : "Unfollowed user!");
       }
     } catch {
-      alert("Failed so update follow status");
+      toast.error("Failed to update follow status");
     } finally {
       setShowMenu(false);
     }
   };
 
   const handleBlock = async () => {
-    if (!confirm(`Block @${post.user.username}? You won't see their posts anymore.`)) return;
+    const confirmed = await useConfirm()({
+      title: "Block User",
+      message: `Block @${post.user.username}? You won't see their posts anymore.`,
+      confirmText: "Block",
+      isDanger: true,
+    });
+    
+    if (!confirmed) return;
     
     try {
       const res = await fetch('/api/users/block', {
@@ -196,10 +215,10 @@ export function PostCard({ post, onHide }: PostCardProps) {
       if (res.ok) {
         setIsHidden(true);
         onHide?.(post.id);
-        alert("User blocked");
+        toast.success("User blocked");
       }
     } catch {
-      alert("Failed to block user");
+      toast.error("Failed to block user");
     } finally {
       setShowMenu(false);
     }
@@ -212,9 +231,9 @@ export function PostCard({ post, onHide }: PostCardProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: post.user_id })
       });
-      alert("User muted");
+      toast.success("User muted");
     } catch {
-      alert("Failed to mute user");
+      toast.error("Failed to mute user");
     } finally {
       setShowMenu(false);
     }
@@ -231,13 +250,13 @@ export function PostCard({ post, onHide }: PostCardProps) {
       });
       
       if (res.ok) {
-        alert("Post reported. Thank you for helping keep our community safe.");
+        toast.success("Post reported. Thank you for helping keep our community safe.");
       } else {
         const data = await res.json();
-        alert(data.error || "Failed to report post");
+        toast.error(data.error || "Failed to report post");
       }
     } catch {
-      alert("Failed to report post");
+      toast.error("Failed to report post");
     } finally {
       setShowMenu(false);
     }
@@ -246,11 +265,20 @@ export function PostCard({ post, onHide }: PostCardProps) {
   const handleShare = async () => {
     try {
       await navigator.clipboard.writeText(`${window.location.origin}/post/${post.id}`);
-      alert("Link copied to clipboard!");
+      toast.success("Link copied to clipboard!");
     } catch {
-      alert("Failed to copy link");
+      toast.error("Failed to copy link");
     }
     setShowMenu(false);
+  };
+
+  const handleEdit = () => {
+    setShowEditDialog(true);
+    setShowMenu(false);
+  };
+
+  const handleEditSuccess = (updatedPost: any) => {
+    setCurrentPost(updatedPost);
   };
 
   if (isDeleted || isHidden) return null;
@@ -304,7 +332,7 @@ export function PostCard({ post, onHide }: PostCardProps) {
                     >
                         {isOwner ? (
                              <div className="flex flex-col">
-                                <button className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 flex items-center gap-2">
+                                <button onClick={handleEdit} className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 flex items-center gap-2">
                                     <Edit size={16} /> Edit Post
                                 </button>
                                 <button
@@ -351,11 +379,11 @@ export function PostCard({ post, onHide }: PostCardProps) {
         {/* Content - Full Width */}
         <div className="w-full">
             <p className="text-base leading-relaxed text-gray-200 mb-6 font-light">
-               {post.content}
+               {currentPost.content}
             </p>
 
            {/* Code / Interactive Area */}
-           {post.code_snippet && (
+           {currentPost.code_snippet && (
               <div className="mb-6 rounded-2xl overflow-hidden border border-white/5 shadow-2xl bg-[#080808]">
                  {/* Toggle Switcher Header */}
                  <div className="flex items-center justify-between px-4 py-3 bg-white/5 border-b border-white/5">
@@ -393,7 +421,7 @@ export function PostCard({ post, onHide }: PostCardProps) {
                              animate={{ opacity: 1 }}
                              exit={{ opacity: 0 }}
                           >
-                             <CodeBlock code={post.code_snippet} language={post.language || 'text'} />
+                             <CodeBlock code={currentPost.code_snippet} language={currentPost.language || 'text'} />
                           </motion.div>
                        ) : (
                           <motion.div
@@ -403,7 +431,7 @@ export function PostCard({ post, onHide }: PostCardProps) {
                              exit={{ opacity: 0 }}
                              className="p-4"
                           >
-                             <LivePreview code={post.code_snippet} language={post.language || 'tsx'} compiledCode={post.compiled_code} />
+                             <LivePreview code={currentPost.code_snippet} language={currentPost.language || 'tsx'} compiledCode={currentPost.compiled_code} />
                           </motion.div>
                        )}
                     </AnimatePresence>
@@ -452,6 +480,12 @@ export function PostCard({ post, onHide }: PostCardProps) {
 
       </div>
 
+      <EditPostDialog
+        isOpen={showEditDialog}
+        onClose={() => setShowEditDialog(false)}
+        post={currentPost}
+        onSuccess={handleEditSuccess}
+      />
     </motion.article>
   );
 }

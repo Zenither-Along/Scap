@@ -4,6 +4,7 @@ import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import { Trash2 } from "lucide-react";
 import { useUser } from "@clerk/nextjs";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 interface ReplyItemProps {
   reply: {
@@ -30,7 +31,15 @@ export function ReplyItem({ reply, postOwnerId, onDelete }: ReplyItemProps) {
   const handleDelete = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!confirm("Delete this reply?")) return;
+    
+    const confirmed = await useConfirm()({
+      title: "Delete Reply",
+      message: "Are you sure you want to delete this reply?",
+      confirmText: "Delete",
+      isDanger: true,
+    });
+    
+    if (!confirmed) return;
     
     try {
       const res = await fetch(`/api/comments?id=${reply.id}`, { method: 'DELETE' });
